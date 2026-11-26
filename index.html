@@ -21,7 +21,7 @@
       </form>
 
       <div class="header-util" id="headerUtil">
-        <!-- 로그인 상태에 따라 script.js 가 채워요 -->
+        <!-- 로그인 상태(db.auth.getSession)에 따라 script.js 가 채워요 -->
       </div>
     </div>
 
@@ -143,7 +143,7 @@
             <input type="email" id="suEmail" autocomplete="email" required>
           </div>
           <div class="field">
-            <label for="suPw">비밀번호 <small>(영문·숫자 포함 8자 이상)</small></label>
+            <label for="suPw">비밀번호 <small>(6자 이상)</small></label>
             <input type="password" id="suPw" autocomplete="new-password" required>
           </div>
           <div class="field">
@@ -187,7 +187,7 @@
   </footer>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  
+
   <!-- 불러오는 순서: supabase-js(CDN) → db.js → script.js -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="db.js"></script>
