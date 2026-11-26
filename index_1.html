@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="ATELIER ARCHIVE - 오래 입을수록 멋이 나는 빈티지 의류 셀렉트숍">
+  <title>ATELIER ARCHIVE | 빈티지 셀렉트숍</title>
+  <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- ===== 머리말: 로고 · 검색 · 회원 · 장바구니 ===== -->
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="#home" class="logo" aria-label="ATELIER ARCHIVE 홈">ATELIER<span>ARCHIVE</span></a>
+
+      <form class="search-form" id="searchForm" role="search">
+        <label for="searchInput" class="sr-only">상품 검색</label>
+        <input type="search" id="searchInput" placeholder="찾는 빈티지 아이템을 입력하세요" autocomplete="off">
+        <button type="submit" class="search-btn">검색</button>
+      </form>
+
+      <div class="header-util" id="headerUtil">
+        <!-- 로그인 상태에 따라 script.js 가 채워요 -->
+      </div>
+    </div>
+
+    <!-- ===== 분류 메뉴 ===== -->
+    <nav class="main-nav" aria-label="상품 분류">
+      <ul id="categoryNav">
+        <li><a href="#shop" data-cat="전체">전체</a></li>
+        <li><a href="#shop" data-cat="상의">상의</a></li>
+        <li><a href="#shop" data-cat="하의">하의</a></li>
+        <li><a href="#shop" data-cat="신발">신발</a></li>
+        <li><a href="#shop" data-cat="원피스">원피스</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main id="main">
+    <!-- ===== 첫 화면: 슬라이드 + 상품 목록 ===== -->
+    <section class="view" id="view-home" data-view="home">
+      <div class="hero" id="hero" aria-roledescription="carousel" aria-label="메인 슬라이드">
+        <div class="hero-slides">
+          <figure class="hero-slide is-active"><img src="img/hero-1.svg" alt="빈티지 옷이 걸린 행거"></figure>
+          <figure class="hero-slide"><img src="img/hero-2.svg" alt="개어 놓은 니트와 모자"></figure>
+          <figure class="hero-slide"><img src="img/hero-3.svg" alt="가죽 가방과 로퍼"></figure>
+          <figure class="hero-slide"><img src="img/hero-4.svg" alt="창가의 플로럴 원피스"></figure>
+        </div>
+        <div class="hero-copy">
+          <p class="hero-kicker">VINTAGE SELECT SHOP</p>
+          <h1 class="hero-title">시간이 고른 옷,<br>오늘의 나에게</h1>
+          <p class="hero-text">한 벌씩 검수한 빈티지를 아카이브합니다.</p>
+          <a href="#shop" class="btn btn-dark" data-cat="전체">컬렉션 보기</a>
+        </div>
+        <div class="hero-dots" id="heroDots" role="tablist" aria-label="슬라이드 선택"></div>
+      </div>
+
+      <section class="benefit-band" aria-label="회원 혜택">
+        <div class="benefit"><strong>3,000P</strong><span>신규 가입 즉시 적립</span></div>
+        <div class="benefit"><strong>최대 7%</strong><span>등급별 구매 적립</span></div>
+        <div class="benefit"><strong>50,000원↑</strong><span>무료 배송</span></div>
+      </section>
+
+      <section class="shop" id="shop" aria-labelledby="shopTitle">
+        <div class="section-head">
+          <h2 id="shopTitle">ARCHIVE <small id="shopSubtitle">전체 상품</small></h2>
+          <div class="shop-tools">
+            <div class="filter-chips" id="filterChips" role="group" aria-label="분류 필터"></div>
+            <label for="sortSelect" class="sr-only">정렬</label>
+            <select id="sortSelect">
+              <option value="default">추천순</option>
+              <option value="low">낮은 가격순</option>
+              <option value="high">높은 가격순</option>
+              <option value="name">이름순</option>
+            </select>
+          </div>
+        </div>
+        <p class="result-info" id="resultInfo"></p>
+        <div class="product-grid" id="productGrid"></div>
+      </section>
+    </section>
+
+    <!-- ===== 상품 상세 ===== -->
+    <section class="view" id="view-product" data-view="product" hidden>
+      <div class="container" id="productDetail"></div>
+    </section>
+
+    <!-- ===== 장바구니 ===== -->
+    <section class="view" id="view-cart" data-view="cart" hidden>
+      <div class="container">
+        <h2 class="page-title">장바구니</h2>
+        <div id="cartArea"></div>
+      </div>
+    </section>
+
+    <!-- ===== 체험 결제 ===== -->
+    <section class="view" id="view-checkout" data-view="checkout" hidden>
+      <div class="container">
+        <h2 class="page-title">주문 · 체험 결제</h2>
+        <p class="notice">실제 결제는 이루어지지 않아요. 결제 버튼을 누르면 주문 내역만 저장됩니다.</p>
+        <div id="checkoutArea"></div>
+      </div>
+    </section>
+
+    <!-- ===== 주문 완료 ===== -->
+    <section class="view" id="view-complete" data-view="complete" hidden>
+      <div class="container narrow" id="completeArea"></div>
+    </section>
+
+    <!-- ===== 로그인 ===== -->
+    <section class="view" id="view-login" data-view="login" hidden>
+      <div class="container narrow">
+        <h2 class="page-title">로그인</h2>
+        <form class="form-card" id="loginForm" novalidate>
+          <div class="field">
+            <label for="loginEmail">이메일</label>
+            <input type="email" id="loginEmail" autocomplete="username" required>
+          </div>
+          <div class="field">
+            <label for="loginPw">비밀번호</label>
+            <input type="password" id="loginPw" autocomplete="current-password" required>
+          </div>
+          <p class="form-msg" id="loginMsg" role="alert"></p>
+          <button type="submit" class="btn btn-dark btn-block">로그인</button>
+          <p class="form-foot">아직 회원이 아니신가요? <a href="#signup">회원가입</a></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- ===== 회원가입 ===== -->
+    <section class="view" id="view-signup" data-view="signup" hidden>
+      <div class="container narrow">
+        <h2 class="page-title">회원가입</h2>
+        <p class="notice">지금 가입하면 <strong>3,000P</strong>를 바로 드려요.</p>
+        <form class="form-card" id="signupForm" novalidate>
+          <div class="field">
+            <label for="suName">이름</label>
+            <input type="text" id="suName" maxlength="20" autocomplete="name" required>
+          </div>
+          <div class="field">
+            <label for="suEmail">이메일</label>
+            <input type="email" id="suEmail" autocomplete="email" required>
+          </div>
+          <div class="field">
+            <label for="suPw">비밀번호 <small>(영문·숫자 포함 8자 이상)</small></label>
+            <input type="password" id="suPw" autocomplete="new-password" required>
+          </div>
+          <div class="field">
+            <label for="suPw2">비밀번호 확인</label>
+            <input type="password" id="suPw2" autocomplete="new-password" required>
+          </div>
+          <div class="field">
+            <label for="suPhone">휴대폰 번호 <small>(선택)</small></label>
+            <input type="tel" id="suPhone" placeholder="010-0000-0000" autocomplete="tel">
+          </div>
+          <label class="check">
+            <input type="checkbox" id="suAgree"> 이용약관 및 개인정보 수집에 동의합니다 (필수)
+          </label>
+          <p class="form-msg" id="signupMsg" role="alert"></p>
+          <button type="submit" class="btn btn-dark btn-block">가입하고 3,000P 받기</button>
+          <p class="form-foot">이미 회원이신가요? <a href="#login">로그인</a></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- ===== 마이페이지 ===== -->
+    <section class="view" id="view-mypage" data-view="mypage" hidden>
+      <div class="container" id="mypageArea"></div>
+    </section>
+  </main>
+
+  <!-- ===== 꼬리말 ===== -->
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div>
+        <p class="footer-logo">ATELIER ARCHIVE</p>
+        <p>오래 입을수록 멋이 나는 빈티지를 고릅니다.</p>
+      </div>
+      <ul class="footer-info">
+        <li>고객센터 평일 10:00 – 17:00</li>
+        <li>무료 배송 50,000원 이상 · 기본 배송비 3,000원</li>
+        <li>빈티지 특성상 재고가 적고 재입고되지 않을 수 있어요.</li>
+      </ul>
+    </div>
+    <p class="copyright">© 2026 ATELIER ARCHIVE. 웹프로그래밍 수업 과제용 쇼핑몰입니다.</p>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- 불러오는 순서: supabase-js(CDN) → db.js → script.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="db.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
