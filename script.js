@@ -126,6 +126,7 @@ const ICON = {
   user: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>',
   join: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10" cy="8" r="4"/><path d="M2 21c1.5-4 4.5-6 8-6 1.6 0 3 .4 4.3 1.1"/><path d="M19 14v6M16 17h6"/></svg>',
   bag: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 8h14l-1 13H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>',
+  admin: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="#fff"/><circle cx="15" cy="12" r="2" fill="#fff"/><circle cx="8" cy="18" r="2" fill="#fff"/></svg>',
   logout: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M15 4h4v16h-4"/><path d="M10 8l-4 4 4 4"/><path d="M6 12h10"/></svg>'
 };
 
@@ -421,7 +422,11 @@ function calcCart(items) {
 /* =========================================================
    화면: 머리말
    로그인 중: 이름 님 · 로그아웃 / 아니면: 로그인 · 회원가입
+   관리자(shop_profiles.role = admin)에게만 「관리」 링크
    ========================================================= */
+function isAdmin() {
+  return Boolean(auth.profile && auth.profile.role === "admin");
+}
 function renderHeader() {
   const count = cartCount();
   let html = "";
@@ -433,6 +438,9 @@ function renderHeader() {
     html += `<a href="#login" class="util-link" title="로그인">${ICON.user}<span class="util-text">로그인</span></a>`;
     html += `<span class="util-text" aria-hidden="true">·</span>`;
     html += `<a href="#signup" class="util-link" title="회원가입">${ICON.join}<span class="util-text">회원가입</span></a>`;
+  }
+  if (isAdmin()) {
+    html += `<a href="admin.html" class="util-link" title="관리">${ICON.admin}<span class="util-text">관리</span></a>`;
   }
   html += `<a href="#cart" class="util-link" title="장바구니">${ICON.bag}<span class="util-text">장바구니</span> <span class="cart-count">${count}</span></a>`;
   $("#headerUtil").innerHTML = html;
