@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>관리 | ATELIER ARCHIVE</title>
+  <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* ---------- 관리 페이지에만 쓰는 모양 (색 · 글꼴은 style.css 를 그대로 씀) ---------- */
+    .admin-gate { text-align: center; padding: 100px 20px; color: var(--muted); }
+    .admin-stats {
+      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 32px;
+    }
+    .admin-section { margin-bottom: 40px; }
+    .admin-section h2 { font-family: var(--serif); font-size: 1.4rem; margin: 0 0 12px; letter-spacing: .03em; }
+    .admin-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .admin-tools input, .admin-tools select {
+      padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--white);
+    }
+    .admin-tools input { flex: 1; min-width: 160px; max-width: 280px; }
+    .admin-count { color: var(--muted); font-size: .88rem; margin-left: auto; }
+
+    /* 표가 화면보다 넓으면 표 안에서만 좌우로 넘겨요 */
+    .table-scroll {
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+      background: var(--white); border: 1px solid var(--line); border-radius: var(--radius);
+    }
+    .admin-table { width: 100%; min-width: 960px; border-collapse: collapse; font-size: .9rem; }
+    .admin-table th, .admin-table td {
+      padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left;
+      white-space: nowrap; vertical-align: middle;
+    }
+    .admin-table th { background: var(--beige-100); color: var(--brown-700); font-weight: 600; }
+    .admin-table tr:last-child td { border-bottom: 0; }
+    .admin-table tr.is-me td { background: var(--cream); }
+    .admin-table select, .admin-table input {
+      padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--cream);
+    }
+    .admin-table input[type="number"] { width: 110px; }
+    .admin-table .num { text-align: right; }
+    .admin-table .cell-items { white-space: normal; min-width: 240px; }
+    .admin-table .empty-row { text-align: center; color: var(--muted); padding: 32px 12px; }
+    .btn-sm { min-height: 34px; padding: 0 14px; font-size: .85rem; }
+    .me-tag { font-size: .72rem; color: var(--brown-500); margin-left: 4px; }
+
+    @media (max-width: 720px) {
+      .admin-stats { grid-template-columns: minmax(0, 1fr); }
+      .admin-count { margin-left: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <!-- ===== 머리말 ===== -->
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="index.html" class="logo" aria-label="ATELIER ARCHIVE 쇼핑몰로">ATELIER<span>ARCHIVE</span></a>
+      <span class="grade-badge">ADMIN</span>
+      <div class="header-util" style="margin-left:auto">
+        <a href="index.html" class="util-link">쇼핑몰로</a>
+        <button type="button" class="util-link" id="adminLogout">로그아웃</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- 관리자 확인 전에는 이것만 보여요 -->
+    <div class="admin-gate" id="adminGate">관리자 확인 중…</div>
+
+    <div class="container" id="adminApp" hidden>
+      <h1 class="page-title">관리</h1>
+
+      <!-- ===== 요약 숫자 ===== -->
+      <section class="admin-stats" aria-label="요약">
+        <div class="card">
+          <p class="stat-label">회원 수</p>
+          <p class="stat-value" id="statMembers">-</p>
+        </div>
+        <div class="card">
+          <p class="stat-label">주문 건수</p>
+          <p class="stat-value" id="statOrders">-</p>
+        </div>
+        <div class="card">
+          <p class="stat-label">주문 합계 <small>(취소 제외)</small></p>
+          <p class="stat-value" id="statTotal">-</p>
+        </div>
+      </section>
+
+      <!-- ===== 회원 목록 ===== -->
+      <section class="admin-section" aria-labelledby="memberTitle">
+        <h2 id="memberTitle">회원 목록</h2>
+        <div class="admin-tools">
+          <label for="memberSearch" class="sr-only">이름 검색</label>
+          <input type="search" id="memberSearch" placeholder="이름으로 검색" autocomplete="off">
+          <label for="gradeFilter" class="sr-only">등급 필터</label>
+          <select id="gradeFilter">
+            <option value="">전체 등급</option>
+          </select>
+          <span class="admin-count" id="memberCount"></span>
+        </div>
+        <div class="table-scroll">
+          <table class="admin-table">
+            <thead>
+              <tr><th>이름</th><th>이메일</th><th>연락처</th><th>등급</th><th>포인트</th><th>역할</th><th>가입일</th><th>저장</th></tr>
+            </thead>
+            <tbody id="memberBody">
+              <tr><td colspan="8" class="empty-row">불러오는 중…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ===== 주문 목록 ===== -->
+      <section class="admin-section" aria-labelledby="orderTitle">
+        <h2 id="orderTitle">주문 목록 <small class="muted" style="font-family:var(--sans);font-size:.85rem">최신순</small></h2>
+        <div class="table-scroll">
+          <table class="admin-table">
+            <thead>
+              <tr><th>주문 번호</th><th>주문일</th><th>주문자</th><th>상품</th><th class="num">합계</th><th>상태</th><th>저장</th></tr>
+            </thead>
+            <tbody id="orderBody">
+              <tr><td colspan="7" class="empty-row">불러오는 중…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- 불러오는 순서: supabase-js(CDN) → db.js → 관리 페이지 코드 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="db.js"></script>
+  <script>
+    /* =========================================================
+       ATELIER ARCHIVE — 관리 페이지
+       · 화면의 관리자 확인은 길 안내일 뿐이에요. 실제로 막는 일은
+         DB 의 보안 규칙과 shop_admin_update_member 함수가 해요.
+       · 회원 표(shop_profiles)는 update 로 직접 고치지 않아요.
+       ========================================================= */
+    const GRADES = ["WELCOME", "SILVER", "GOLD", "VIP"];
+    // 쇼핑몰 화면에서 쓰는 등급 이름 (보여 줄 때만)
+    const GRADE_LABEL = { WELCOME: "WHITE", SILVER: "IVORY", GOLD: "BEIGE", VIP: "CAMEL" };
+    const ROLES = ["member", "admin"];
+    const STATUSES = ["결제완료", "배송중", "배송완료", "취소"];
+
+    const ORDER_COLUMNS =
+      `id, user_id, total, status, created_at, ${TABLE.orderItems}(product_id, qty, unit_price, ${TABLE.products}(name))`;
+
+    let me = null;          // 지금 로그인한 관리자
+    let members = [];       // shop_profiles 전체
+    let orders = [];        // shop_orders 최신순
+
+    /* ---------- 도우미 ---------- */
+    const $ = (sel) => document.querySelector(sel);
+    function esc(text) {
+      return String(text ?? "")
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+    function won(n) { return Number(n || 0).toLocaleString("ko-KR") + "원"; }
+    function formatDate(iso, withTime) {
+      if (!iso) return "-";
+      const d = new Date(iso);
+      const p = (n) => String(n).padStart(2, "0");
+      const day = `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}`;
+      return withTime ? `${day} ${p(d.getHours())}:${p(d.getMinutes())}` : day;
+    }
+    let toastTimer = null;
+    function showToast(message) {
+      const el = $("#toast");
+      el.textContent = message;
+      el.classList.add("is-show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.remove("is-show"), 2600);
+    }
+    function errorText(error) {
+      const code = String(error.code || "");
+      const msg = (error.message || "").toLowerCase();
+      if (code === "42501" || msg.includes("permission denied") || msg.includes("row-level security")) return "권한이 없어요. 관리자 계정인지 확인해 주세요.";
+      if (code === "PGRST116") return "권한이 없거나 대상을 찾지 못했어요.";
+      if (code === "PGRST202") return "shop_admin_update_member 함수를 찾지 못했어요. 함수 이름과 넘기는 값의 이름을 확인해 주세요.";
+      if (code === "PGRST301" || msg.includes("jwt expired")) return "로그인이 만료됐어요. 다시 로그인해 주세요.";
+      if (msg.includes("failed to fetch")) return "인터넷 연결을 확인해 주세요.";
+      return error.message || "문제가 생겼어요. 잠시 후 다시 시도해 주세요.";
+    }
+    function options(list, selected, labelOf) {
+      return list.map((v) =>
+        `<option value="${esc(v)}"${v === selected ? " selected" : ""}>${esc(labelOf ? labelOf(v) : v)}</option>`
+      ).join("");
+    }
+    const gradeLabel = (g) => `${g} (${GRADE_LABEL[g]})`;
+
+    /* ---------- ① 관리자 확인 (아니면 index.html 로) ---------- */
+    async function checkAdmin() {
+      if (!db) { location.replace("index.html"); return false; }
+      try {
+        const { data } = await db.auth.getSession();
+        const session = data && data.session;
+        if (!session) { location.replace("index.html#login"); return false; }
+
+        const { data: profile, error } = await db
+          .from(TABLE.profiles)
+          .select("id, name, email, role")
+          .eq("id", session.user.id)
+          .maybeSingle();
+        if (error || !profile || profile.role !== "admin") {
+          location.replace("index.html");
+          return false;
+        }
+        me = profile;
+        return true;
+      } catch (e) {
+        console.error(e.message);
+        location.replace("index.html");
+        return false;
+      }
+    }
+
+    /* ---------- 읽어 오기 ---------- */
+    async function loadMembers() {
+      const { data, error } = await db
+        .from(TABLE.profiles)
+        .select("id, email, name, phone, grade, points, role, created_at")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      members = data || [];
+    }
+    async function loadOrders() {
+      let res = await db
+        .from(TABLE.orders)
+        .select(ORDER_COLUMNS)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false });
+      // 상품 이름을 함께 못 읽으면 주문만이라도 읽어요
+      if (res.error) {
+        console.error(res.error.message);
+        res = await db
+          .from(TABLE.orders)
+          .select("id, user_id, total, status, created_at")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false });
+      }
+      if (res.error) throw res.error;
+      orders = res.data || [];
+    }
+
+    /* ---------- ⑤ 요약 숫자 ---------- */
+    function renderStats() {
+      const sum = orders
+        .filter((o) => o.status !== "취소")
+        .reduce((s, o) => s + Number(o.total || 0), 0);
+      $("#statMembers").textContent = `${members.length.toLocaleString("ko-KR")}명`;
+      $("#statOrders").textContent = `${orders.length.toLocaleString("ko-KR")}건`;
+      $("#statTotal").textContent = won(sum);
+    }
+
+    /* ---------- ② 회원 목록 (이름 검색 · 등급 필터) ---------- */
+    function renderMembers() {
+      const word = $("#memberSearch").value.trim().toLowerCase();
+      const grade = $("#gradeFilter").value;
+      const list = members.filter((m) =>
+        (!word || String(m.name || "").toLowerCase().includes(word)) &&
+        (!grade || m.grade === grade)
+      );
+      $("#memberCount").textContent = `${list.length}명 / 전체 ${members.length}명`;
+
+      if (list.length === 0) {
+        $("#memberBody").innerHTML = `<tr><td colspan="8" class="empty-row">조건에 맞는 회원이 없어요.</td></tr>`;
+        return;
+      }
+      $("#memberBody").innerHTML = list.map((m) => {
+        const isMe = me && m.id === me.id;
+        const who = esc(m.name || m.email || "회원");
+        return `
+          <tr data-id="${esc(m.id)}"${isMe ? ' class="is-me"' : ""}>
+            <td>${esc(m.name || "-")}${isMe ? '<span class="me-tag">나</span>' : ""}</td>
+            <td>${esc(m.email || "-")}</td>
+            <td>${esc(m.phone || "-")}</td>
+            <td><select data-field="grade" aria-label="${who} 등급">${options(GRADES, m.grade, gradeLabel)}</select></td>
+            <td><input type="number" data-field="points" aria-label="${who} 포인트" min="0" step="1" inputmode="numeric" value="${Number(m.points) || 0}"></td>
+            <td><select data-field="role" aria-label="${who} 역할">${options(ROLES, m.role)}</select></td>
+            <td>${formatDate(m.created_at)}</td>
+            <td><button type="button" class="btn btn-sm" data-save-member>저장</button></td>
+          </tr>`;
+      }).join("");
+    }
+
+    /* ---------- ③ 등급 · 포인트 · 역할 저장 (함수로만) ---------- */
+    async function saveMember(row, button) {
+      const id = row.dataset.id;
+      const grade = row.querySelector('[data-field="grade"]').value;
+      const role = row.querySelector('[data-field="role"]').value;
+      const pointsRaw = row.querySelector('[data-field="points"]').value.trim();
+
+      if (!GRADES.includes(grade)) { showToast("등급을 다시 골라 주세요."); return; }
+      if (!ROLES.includes(role)) { showToast("역할을 다시 골라 주세요."); return; }
+      if (!/^\d+$/.test(pointsRaw) || !Number.isSafeInteger(Number(pointsRaw))) {
+        showToast("포인트는 0 이상의 정수만 넣을 수 있어요.");
+        return;
+      }
+      const points = Number(pointsRaw);
+      if (me && id === me.id && role !== "admin" &&
+          !confirm("내 역할을 member 로 바꾸면 이 관리 페이지에 다시 들어올 수 없어요. 계속할까요?")) {
+        return;
+      }
+
+      button.disabled = true;
+      const { error } = await db.rpc("shop_admin_update_member", {
+        p_user_id: id,
+        p_grade: grade,
+        p_points: points,
+        p_role: role
+      });
+      button.disabled = false;
+
+      if (error) {
+        console.error(error.message);
+        showToast("저장하지 못했어요. " + errorText(error));
+        return;
+      }
+      showToast("회원 정보를 저장했어요.");
+      if (me && id === me.id && role !== "admin") { location.replace("index.html"); return; }
+      await refreshMembers();
+    }
+
+    /* ---------- ④ 주문 목록 · 상태 바꾸기 ---------- */
+    function memberLabel(userId) {
+      const m = members.find((x) => x.id === userId);
+      if (!m) return "-";
+      return `${esc(m.name || "-")}<br><small class="muted">${esc(m.email || "")}</small>`;
+    }
+    function itemsLabel(order) {
+      const items = order[TABLE.orderItems];
+      if (!Array.isArray(items)) return '<span class="muted">-</span>';
+      if (items.length === 0) return '<span class="muted">상품 없음</span>';
+      return items.map((it) => {
+        const p = it[TABLE.products];
+        return `${esc(p && p.name ? p.name : `상품 #${it.product_id}`)} × ${it.qty}`;
+      }).join("<br>");
+    }
+    function renderOrders() {
+      if (orders.length === 0) {
+        $("#orderBody").innerHTML = `<tr><td colspan="7" class="empty-row">아직 주문이 없어요.</td></tr>`;
+        return;
+      }
+      $("#orderBody").innerHTML = orders.map((o) => {
+        const list = STATUSES.includes(o.status) ? STATUSES : [o.status, ...STATUSES];
+        return `
+          <tr data-order-id="${o.id}">
+            <td>${o.id}</td>
+            <td>${formatDate(o.created_at, true)}</td>
+            <td>${memberLabel(o.user_id)}</td>
+            <td class="cell-items">${itemsLabel(o)}</td>
+            <td class="num">${won(o.total)}</td>
+            <td><select data-field="status" aria-label="주문 ${o.id} 상태">${options(list, o.status)}</select></td>
+            <td><button type="button" class="btn btn-sm" data-save-order>저장</button></td>
+          </tr>`;
+      }).join("");
+    }
+    async function saveOrderStatus(row, button) {
+      const id = Number(row.dataset.orderId);
+      const status = row.querySelector('[data-field="status"]').value;
+      if (!STATUSES.includes(status)) { showToast("상태를 다시 골라 주세요."); return; }
+
+      button.disabled = true;
+      const { data, error } = await db
+        .from(TABLE.orders)
+        .update({ status })
+        .eq("id", id)
+        .select("id, status")
+        .single();
+      button.disabled = false;
+
+      if (error) {
+        console.error(error.message);
+        showToast("상태를 바꾸지 못했어요. " + errorText(error));
+        return;
+      }
+      const target = orders.find((o) => o.id === id);
+      if (target) target.status = data.status;
+      renderStats();
+      showToast(`주문 ${id} 상태를 「${data.status}」(으)로 바꿨어요.`);
+    }
+
+    /* ---------- 다시 읽기 ---------- */
+    async function refreshMembers() {
+      try {
+        await loadMembers();
+        renderMembers();
+        renderStats();
+        renderOrders();   // 주문자 이름도 새로
+      } catch (e) {
+        showToast("회원 목록을 불러오지 못했어요. " + errorText(e));
+      }
+    }
+
+    /* ---------- 이벤트 ---------- */
+    function bindEvents() {
+      $("#memberSearch").addEventListener("input", renderMembers);
+      $("#gradeFilter").addEventListener("change", renderMembers);
+
+      // 포인트 칸: 숫자가 아닌 글자(-, ., e)는 막기
+      document.addEventListener("keydown", (e) => {
+        if (e.target.matches('[data-field="points"]') && ["-", "+", ".", "e", "E"].includes(e.key)) e.preventDefault();
+      });
+
+      document.addEventListener("click", (e) => {
+        const memberBtn = e.target.closest("[data-save-member]");
+        if (memberBtn) { saveMember(memberBtn.closest("tr"), memberBtn); return; }
+        const orderBtn = e.target.closest("[data-save-order]");
+        if (orderBtn) { saveOrderStatus(orderBtn.closest("tr"), orderBtn); }
+      });
+
+      $("#adminLogout").addEventListener("click", async () => {
+        if (db) await db.auth.signOut();
+        location.replace("index.html");
+      });
+    }
+
+    /* ---------- 시작 ---------- */
+    document.addEventListener("DOMContentLoaded", async () => {
+      if (!(await checkAdmin())) return;
+
+      $("#adminGate").hidden = true;
+      $("#adminApp").hidden = false;
+      $("#gradeFilter").insertAdjacentHTML("beforeend", options(GRADES, null, gradeLabel));
+      bindEvents();
+
+      try {
+        await loadMembers();
+        renderMembers();
+      } catch (e) {
+        $("#memberBody").innerHTML = `<tr><td colspan="8" class="empty-row">회원 목록을 불러오지 못했어요. ${esc(errorText(e))}</td></tr>`;
+      }
+      try {
+        await loadOrders();
+        renderOrders();
+      } catch (e) {
+        $("#orderBody").innerHTML = `<tr><td colspan="7" class="empty-row">주문 목록을 불러오지 못했어요. ${esc(errorText(e))}</td></tr>`;
+      }
+      renderStats();
+    });
+  </script>
+</body>
+</html>
