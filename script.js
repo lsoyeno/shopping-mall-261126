@@ -4,7 +4,8 @@
    불러오는 순서: supabase-js(CDN) → db.js → script.js
    · 회원(가입·로그인·로그아웃·내 정보)과 상품은 Supabase 를 씁니다.
      연결 변수 db 와 표 이름 TABLE 은 db.js 에 있어요.
-   · 장바구니와 주문은 아직 브라우저(localStorage)에 둡니다.
+   · 주문은 shop_orders · shop_order_items 에 저장합니다.
+   · 장바구니만 브라우저(localStorage)에 둡니다.
      장바구니에는 shop_products 표의 id 와 수량만 담아요.
    ========================================================= */
 
@@ -38,14 +39,14 @@ const SLIDE_INTERVAL = 6000;      // 슬라이드 교차 간격 (6초)
 const NO_DB = "데이터베이스에 연결하지 못했어요. 잠시 후 새로 고침해 주세요.";
 
 /* =========================================================
-   브라우저 저장소 — 장바구니 · 주문만 (회원 정보 · 재고는 저장하지 않음)
+   브라우저 저장소 — 장바구니만 (회원 정보 · 재고 · 주문은 저장하지 않음)
    ========================================================= */
 const KEY = {
-  cart: "aa_cart_v2",   // [{ id: shop_products.id, qty }]
-  orders: "aa_orders"
+  cart: "aa_cart_v2"    // [{ id: shop_products.id, qty }]
 };
-// 예전 버전이 남긴 이름들 (회원 목록·비밀번호·로그인 기록, 배열 id 로 담긴 장바구니, 화면에서 줄이던 재고)
-const OLD_KEYS = ["aa_users", "aa_session", "aa_cart", "aa_stock"];
+// 예전 버전이 남긴 이름들 (회원 목록·비밀번호·로그인 기록, 배열 id 로 담긴 장바구니,
+// 화면에서 줄이던 재고, 받는 분 주소가 들어 있던 브라우저 주문 기록)
+const OLD_KEYS = ["aa_users", "aa_session", "aa_cart", "aa_stock", "aa_orders"];
 
 const store = {
   get(key, fallback) {
@@ -197,6 +198,63 @@ async function fetchProductsByIds(ids) {
 }
 
 /* =========================================================
+   주문 (shop_orders · shop_order_items)
+   user_id 와 status 는 DB 가 넣어요. 재고 · 포인트는 바꾸지 않아요.
+   ========================================================= */
+// 주문 + 주문 상세 + 상품 이름을 한 번에 읽는 열 목록
+const ORDER_COLUMNS =
+  `id, total, status, created_at, ${TABLE.orderItems}(product_id, qty, unit_price, ${TABLE.products}(name))`;
+
+// 장바구니 → 주문 상세 줄 (같은 상품은 수량을 합쳐 한 줄)
+function toOrderLines(items) {
+  const map = new Map();
+  for (const { product, qty } of items) {
+    const line = map.get(product.id);
+    if (line) line.qty += qty;
+    else map.set(product.id, { product, product_id: product.id, qty, unit_price: Number(product.price) });
+  }
+  return [...map.values()];
+}
+// total = 수량 × 단가 를 모두 더한 값
+function linesTotal(lines) {
+  return lines.reduce((sum, line) => sum + line.qty * line.unit_price, 0);
+}
+// 읽어 온 주문에서 상품 이름 · 수량 꺼내기
+function orderLines(order) {
+  return (order[TABLE.orderItems] || []).map((it) => ({
+    name: it[TABLE.products] && it[TABLE.products].name ? it[TABLE.products].name : `상품 #${it.product_id}`,
+    qty: it.qty,
+    unit_price: it.unit_price
+  }));
+}
+// 포인트는 저장하지 않고 화면에만 「적립 예정 nP」
+function earnText(total) {
+  return `적립 예정 ${pt(Math.floor(Number(total) * myGrade().rate))}`;
+}
+
+// 내 주문 (최신순)
+async function fetchMyOrders() {
+  if (!db || !auth.user) return { data: [], error: null };
+  return await db
+    .from(TABLE.orders)
+    .select(ORDER_COLUMNS)
+    .eq("user_id", auth.user.id)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false });
+}
+// 주문 한 건
+async function fetchOrder(id) {
+  if (!db) return { data: null, error: { message: NO_DB } };
+  const num = Number(id);
+  if (!Number.isInteger(num)) return { data: null, error: null };
+  return await db
+    .from(TABLE.orders)
+    .select(ORDER_COLUMNS)
+    .eq("id", num)
+    .maybeSingle();
+}
+
+/* =========================================================
    회원 · 등급 (Supabase)
    ========================================================= */
 // DB 의 grade 값으로 화면용 등급 찾기 (모르는 값이면 첫 등급)
@@ -217,9 +275,14 @@ function displayName() {
 }
 
 // Supabase 오류 → 한글 안내문
-function authErrorText(error) {
-  const code = error.code || "";
+function errorText(error) {
+  const code = String(error.code || "");
   const msg = (error.message || "").toLowerCase();
+  if (code === "42501" || msg.includes("permission denied") || msg.includes("row-level security")) return "저장할 권한이 없어요. 로그아웃했다가 다시 로그인해 주세요.";
+  if (code === "PGRST301" || msg.includes("jwt expired")) return "로그인이 만료됐어요. 다시 로그인해 주세요.";
+  if (code === "23503") return "판매가 끝난 상품이 들어 있어요. 장바구니를 확인해 주세요.";
+  if (code === "23505") return "같은 상품이 주문에 두 번 들어갔어요. 장바구니를 확인해 주세요.";
+  if (code === "23514" || code === "23502") return "주문 값이 올바르지 않아요. 장바구니를 확인해 주세요.";
   if (code === "user_already_exists" || msg.includes("already registered")) return "이미 가입된 이메일이에요. 로그인해 주세요.";
   if (code === "invalid_credentials" || msg.includes("invalid login credentials")) return "이메일 또는 비밀번호가 맞지 않아요.";
   if (code === "email_not_confirmed" || msg.includes("email not confirmed")) return "이메일 인증이 아직 안 됐어요. 받은 메일의 링크를 먼저 눌러 주세요.";
@@ -273,7 +336,7 @@ async function signup({ name, email, password, phone }) {
       emailRedirectTo: location.origin + location.pathname
     }
   });
-  if (error) return { ok: false, message: authErrorText(error) };
+  if (error) return { ok: false, message: errorText(error) };
   // 이메일 인증을 켜 둔 경우, 이미 가입된 이메일이면 오류 대신 빈 identities 가 와요
   if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
     return { ok: false, message: "이미 가입된 이메일이에요. 로그인해 주세요." };
@@ -288,7 +351,7 @@ async function signup({ name, email, password, phone }) {
 async function login(email, password) {
   if (!db) return { ok: false, message: NO_DB };
   const { error } = await db.auth.signInWithPassword({ email, password });
-  if (error) return { ok: false, message: authErrorText(error) };
+  if (error) return { ok: false, message: errorText(error) };
   await loadAuth();
   return { ok: true };
 }
@@ -589,7 +652,7 @@ function drawCart() {
     area.innerHTML = `<div class="empty"><p>장바구니가 비어 있어요.</p><a href="#shop" class="btn btn-dark" data-cat="전체">쇼핑하러 가기</a></div>`;
     return;
   }
-  const { subtotal, shipping, total } = calcCart(cartCache);
+  const { subtotal, shipping } = calcCart(cartCache);
   const left = FREE_SHIPPING - subtotal;
 
   area.innerHTML = `
@@ -619,8 +682,8 @@ function drawCart() {
       <aside class="card">
         <h3>결제 예정 금액</h3>
         <div class="summary-row"><span>상품 금액</span><span>${won(subtotal)}</span></div>
-        <div class="summary-row"><span>배송비</span><span>${shipping ? won(shipping) : "무료"}</span></div>
-        <div class="summary-row total"><span>합계</span><span id="cartTotal">${won(total)}</span></div>
+        <div class="summary-row"><span>배송비 <small class="muted">(체험 · 합계에 미포함)</small></span><span>${shipping ? won(shipping) : "무료"}</span></div>
+        <div class="summary-row total"><span>합계</span><span id="cartTotal">${won(subtotal)}</span></div>
         <p class="summary-note">${left > 0 ? `${won(left)} 더 담으면 무료 배송이에요.` : "무료 배송 조건을 채웠어요."}</p>
         <a href="#checkout" class="btn btn-dark btn-block">주문하기</a>
       </aside>
@@ -653,9 +716,9 @@ function removeFromCart(id) {
 
 /* =========================================================
    화면: 체험 결제
-   ※ points 는 DB 가 막아 두어 화면에서 바꿀 수 없어요.
-     포인트 사용·적립 반영은 주문 기능을 DB 로 옮길 때 연결합니다.
+   ※ points 는 관리자만 바꿀 수 있어요. 화면에는 「적립 예정 nP」 만 보여 줘요.
    ※ 재고(stock)도 화면에서 줄이지 않아요.
+   ※ 실제 결제는 없어요. 카드 번호 같은 값은 받지도 저장하지도 않아요.
    ========================================================= */
 async function renderCheckout() {
   const area = $("#checkoutArea");
@@ -701,7 +764,7 @@ async function renderCheckout() {
 
         <h3>포인트 사용</h3>
         <div class="field">
-          <label for="coPoint">보유 ${pt(points)} · 포인트 사용은 주문 기능을 연결한 뒤 열려요</label>
+          <label for="coPoint">보유 ${pt(points)} · 체험 결제에서는 포인트를 쓸 수 없어요</label>
           <div class="field-row">
             <input id="coPoint" type="number" value="0" disabled>
             <button type="button" class="btn" id="useAll" disabled>전액 사용</button>
@@ -723,10 +786,10 @@ async function renderCheckout() {
           ).join("")}
         </ul>
         <div class="summary-row"><span>상품 금액</span><span>${won(subtotal)}</span></div>
-        <div class="summary-row"><span>배송비</span><span>${shipping ? won(shipping) : "무료"}</span></div>
+        <div class="summary-row"><span>배송비 <small class="muted">(체험 · 합계에 미포함)</small></span><span>${shipping ? won(shipping) : "무료"}</span></div>
         <div class="summary-row"><span>포인트 사용</span><span class="minus" id="coUsed">-0P</span></div>
-        <div class="summary-row total"><span>최종 결제 금액</span><span id="coTotal">${won(subtotal + shipping)}</span></div>
-        <p class="summary-note" id="coEarn">${grade.name} 등급 ${Math.round(grade.rate * 100)}% 적립 예정: ${pt(earn)}</p>
+        <div class="summary-row total"><span>합계</span><span id="coTotal">${won(subtotal)}</span></div>
+        <p class="summary-note" id="coEarn">${grade.name} 등급 ${Math.round(grade.rate * 100)}% · 적립 예정 ${pt(earn)}</p>
         <label class="check"><input type="checkbox" id="coAgree"> 주문 내용을 확인했어요 (체험 결제)</label>
         <p class="form-msg" id="coMsg" role="alert"></p>
         <button type="submit" class="btn btn-dark btn-block">체험 결제하기</button>
@@ -741,68 +804,96 @@ async function renderCheckout() {
 
 async function placeOrder(form) {
   const msg = $("#coMsg");
+  msg.textContent = "";
+
+  // ① 로그인 확인 (안 했으면 로그인 화면으로)
+  const { data: sessionData } = db ? await db.auth.getSession() : { data: { session: null } };
+  if (!auth.user || !sessionData.session) {
+    sessionStorage.setItem("aa_after_login", "#checkout");
+    showToast("로그인이 필요해요.");
+    location.hash = "#login";
+    return;
+  }
+
   const name = $("#coName").value.trim();
   const phone = $("#coPhone").value.trim();
   const addr = $("#coAddr").value.trim();
-
   if (!name || !phone || !addr) { msg.textContent = "받는 분, 연락처, 주소를 모두 입력해 주세요."; return; }
   if (!/^[0-9-]{9,13}$/.test(phone)) { msg.textContent = "연락처는 숫자와 - 만 입력해 주세요."; return; }
   if (!$("#coAgree").checked) { msg.textContent = "주문 내용 확인에 체크해 주세요."; return; }
-  if (!auth.user) { location.hash = "#login"; return; }
 
-  // 주문 직전에 표에서 가격 · 재고 다시 확인
   setBusy(form, true);
-  const { items, error } = await loadCartItems();
-  setBusy(form, false);
-  if (error) { msg.textContent = "상품 정보를 확인하지 못했어요. 잠시 후 다시 시도해 주세요."; return; }
-  if (items.length === 0) { msg.textContent = "주문할 상품이 없어요. 장바구니를 확인해 주세요."; return; }
-  for (const { product, qty } of items) {
-    if (qty > stockOf(product)) {
-      msg.textContent = `‘${product.name}’ 재고가 부족해요. 장바구니를 확인해 주세요.`;
-      return;
+  try {
+    // 주문 직전에 표에서 가격 · 재고 다시 확인
+    const { items, error } = await loadCartItems();
+    if (error) { msg.textContent = errorText(error); return; }
+    if (items.length === 0) { msg.textContent = "주문할 상품이 없어요. 장바구니를 확인해 주세요."; return; }
+
+    const lines = toOrderLines(items);          // 같은 상품은 한 줄로
+    for (const line of lines) {
+      if (line.qty > stockOf(line.product)) {
+        msg.textContent = `‘${line.product.name}’ 재고가 부족해요. 장바구니를 확인해 주세요.`;
+        return;
+      }
     }
+    const total = linesTotal(lines);            // 수량 × 단가 의 합
+
+    // ② shop_orders 에 한 줄 (user_id · status 는 DB 가 넣어요)
+    const { data: order, error: orderError } = await db
+      .from(TABLE.orders)
+      .insert({ total })
+      .select()
+      .single();
+    if (orderError) {
+      console.error(orderError.message);
+      msg.textContent = "주문을 저장하지 못했어요. " + errorText(orderError);
+      return;                                   // 장바구니는 그대로
+    }
+
+    // ③ shop_order_items 에 장바구니 상품을 한꺼번에
+    const rows = lines.map((line) => ({
+      order_id: order.id,
+      product_id: line.product_id,
+      qty: line.qty,
+      unit_price: line.unit_price
+    }));
+    const { error: itemsError } = await db.from(TABLE.orderItems).insert(rows);
+    if (itemsError) {
+      console.error(itemsError.message);
+      // 상품 없이 남은 주문 줄을 지워 보기 (지울 권한이 없으면 남을 수 있어요)
+      const { error: cleanupError } = await db.from(TABLE.orders).delete().eq("id", order.id);
+      if (cleanupError) console.error(`주문 ${order.id} 정리 실패: ${cleanupError.message}`);
+      msg.textContent = "주문 상품을 저장하지 못했어요. " + errorText(itemsError);
+      return;                                   // 장바구니는 그대로
+    }
+
+    // ④ 두 번 모두 성공 → 장바구니 비우고 완료 화면으로
+    saveCart([]);
+    location.hash = "#complete/" + order.id;
+  } finally {
+    setBusy(form, false);
   }
-
-  const { subtotal, shipping } = calcCart(items);
-  const grade = myGrade();
-  const now = new Date();
-
-  // 주문 저장은 다음 단계에서 shop_orders · shop_order_items 로 옮길 예정
-  const order = {
-    orderId: "AA" + now.getTime().toString().slice(-9),
-    email: auth.user.email,
-    items: items.map(({ product: p, qty }) => ({ id: p.id, name: p.name, price: p.price, qty })),
-    subtotal,
-    shipping,
-    usedPoints: 0,
-    total: subtotal + shipping,
-    grade: grade.name,
-    rate: grade.rate,
-    earnedPoints: Math.floor(subtotal * grade.rate),   // 적립 예정 (DB 반영 전)
-    receiver: { name, phone, addr, memo: $("#coMemo").value },
-    payMethod: document.querySelector('input[name="pay"]:checked').value,
-    status: "주문 완료 (체험 결제)",
-    createdAt: now.toISOString()
-  };
-
-  const orders = store.get(KEY.orders, []);
-  orders.unshift(order);
-  store.set(KEY.orders, orders);
-
-  saveCart([]);
-  location.hash = "#complete/" + order.orderId;
 }
 
 /* =========================================================
-   화면: 주문 완료
+   화면: 주문 완료 (shop_orders 에서 읽기)
    ========================================================= */
-function renderComplete(orderId) {
-  const order = store.get(KEY.orders, []).find((o) => o.orderId === orderId);
+async function renderComplete(orderId) {
   const area = $("#completeArea");
-  if (!order || !auth.user || order.email !== auth.user.email) {
+  if (!auth.user) {
+    area.innerHTML = `<div class="empty"><p>주문 정보를 보려면 로그인이 필요해요.</p><a href="#login" class="btn">로그인</a></div>`;
+    return;
+  }
+  area.innerHTML = `<div class="empty"><p>불러오는 중…</p></div>`;
+
+  const { data: order, error } = await fetchOrder(orderId);
+  if (error || !order) {
+    if (error) console.error(error.message);
     area.innerHTML = `<div class="empty"><p>주문 정보를 찾을 수 없어요.</p><a href="#mypage" class="btn">마이페이지</a></div>`;
     return;
   }
+  const lines = orderLines(order);
+  const shipping = order.total >= FREE_SHIPPING ? 0 : SHIPPING_FEE;
 
   area.innerHTML = `
     <div class="complete">
@@ -810,13 +901,13 @@ function renderComplete(orderId) {
       <h2 class="page-title">주문이 완료되었어요</h2>
       <p class="muted">체험 결제라 실제 결제는 되지 않았고, 주문 내역만 저장했어요.</p>
       <div class="card">
-        <div class="summary-row"><span>주문 번호</span><strong>${order.orderId}</strong></div>
-        <div class="summary-row"><span>주문 일시</span><span>${formatDate(order.createdAt)}</span></div>
-        <div class="summary-row"><span>상품</span><span>${order.items.map((i) => `${esc(i.name)} × ${i.qty}`).join("<br>")}</span></div>
-        <div class="summary-row"><span>결제 수단</span><span>${esc(order.payMethod)}</span></div>
-        <div class="summary-row"><span>포인트 사용</span><span>-${pt(order.usedPoints)}</span></div>
-        <div class="summary-row"><span>적립 예정 포인트</span><span>+${pt(order.earnedPoints)}</span></div>
-        <div class="summary-row total"><span>결제 금액</span><span>${won(order.total)}</span></div>
+        <div class="summary-row"><span>주문 번호</span><strong>${order.id}</strong></div>
+        <div class="summary-row"><span>주문 일시</span><span>${formatDate(order.created_at)}</span></div>
+        <div class="summary-row"><span>상태</span><span>${esc(order.status || "")}</span></div>
+        <div class="summary-row"><span>상품</span><span>${lines.map((l) => `${esc(l.name)} × ${l.qty}`).join("<br>")}</span></div>
+        <div class="summary-row"><span>배송비 <small class="muted">(체험 · 합계에 미포함)</small></span><span>${shipping ? won(shipping) : "무료"}</span></div>
+        <div class="summary-row"><span>포인트</span><span>${earnText(order.total)}</span></div>
+        <div class="summary-row total"><span>합계</span><span>${won(order.total)}</span></div>
       </div>
       <div class="complete-actions">
         <a href="#mypage" class="btn btn-dark">주문 내역 보기</a>
@@ -850,7 +941,10 @@ async function renderMypage() {
   const next = getNextGrade(grade);
   const progress = Math.round((grade.level / GRADES.length) * 100);
   const progressText = next ? `다음 등급은 ${next.name}이에요.` : "최고 등급이에요. 언제나 감사합니다!";
-  const orders = store.get(KEY.orders, []).filter((o) => o.email === auth.user.email);
+  // 내 주문 (shop_orders · 최신순)
+  const { data: orderData, error: orderError } = await fetchMyOrders();
+  if (orderError) console.error(orderError.message);
+  const orders = orderData || [];
 
   area.innerHTML = `
     <div class="mypage-head">
@@ -880,13 +974,14 @@ async function renderMypage() {
     <div class="mypage-cols">
       <div class="card">
         <h3>주문 내역 (${orders.length})</h3>
-        ${orders.length === 0 ? `<p class="muted">아직 주문 내역이 없어요.</p>` : `
+        ${orderError ? `<p class="muted">주문 내역을 불러오지 못했어요. ${esc(errorText(orderError))}</p>`
+        : orders.length === 0 ? `<p class="muted">아직 주문 내역이 없어요.</p>` : `
         <ul class="order-list">
           ${orders.map((o) => `
             <li class="order-item">
-              <div class="order-top"><span>${formatDate(o.createdAt)} · ${o.orderId}</span><span class="order-status">${esc(o.status)}</span></div>
-              <p class="order-names">${o.items.map((i) => `${esc(i.name)} × ${i.qty}`).join(", ")}</p>
-              <p class="order-sum">${won(o.total)} <small>· ${esc(o.grade)} ${Math.round(o.rate * 100)}% 적립 예정 +${pt(o.earnedPoints)}</small></p>
+              <div class="order-top"><span>${formatDate(o.created_at)} · 주문 번호 ${o.id}</span><span class="order-status">${esc(o.status || "")}</span></div>
+              <p class="order-names">${orderLines(o).map((l) => `${esc(l.name)} × ${l.qty}`).join(", ")}</p>
+              <p class="order-sum">${won(o.total)} <small>· ${earnText(o.total)}</small></p>
             </li>`).join("")}
         </ul>`}
       </div>
@@ -946,7 +1041,7 @@ async function saveProfile(e) {
     .single();
   setBusy(form, false);
 
-  if (error) { msg.textContent = authErrorText(error); return; }
+  if (error) { msg.textContent = errorText(error); return; }
   msg.textContent = "";
   auth.profile = data;
   renderHeader();
