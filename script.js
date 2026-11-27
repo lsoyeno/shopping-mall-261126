@@ -2,23 +2,22 @@
    ATELIER ARCHIVE — script.js
    ---------------------------------------------------------
    불러오는 순서: supabase-js(CDN) → db.js → script.js
-   · 회원(가입·로그인·로그아웃·내 정보)은 Supabase 를 씁니다.
+   · 회원(가입·로그인·로그아웃·내 정보)과 상품은 Supabase 를 씁니다.
      연결 변수 db 와 표 이름 TABLE 은 db.js 에 있어요.
-   · 상품·장바구니·재고·주문은 아직 이 파일과 localStorage 를
-     씁니다. (다음 단계에서 하나씩 DB 로 옮길 예정)
+   · 장바구니와 주문은 아직 브라우저(localStorage)에 둡니다.
+     장바구니에는 shop_products 표의 id 와 수량만 담아요.
    ========================================================= */
 
-// ---------- 상품 데이터 (다음 단계에서 shop_products 로 교체) ----------
-const PRODUCTS = [
-  { id: 1, name: "빈티지 레이스 칼라 블라우스", category: "상의", price: 39000, stock: 12, img: "img/product-1.svg", size: "FREE (가슴단면 52cm · 총장 60cm)", condition: "A (사용감 적음)", desc: "둥근 레이스 칼라가 포인트인 아이보리 블라우스. 얇은 면 소재라 봄·가을 단독으로, 겨울엔 니트 안에 받쳐 입기 좋아요." },
-  { id: 2, name: "울 케이블 니트 가디건", category: "상의", price: 52000, stock: 8, img: "img/product-2.svg", size: "M (가슴단면 54cm · 총장 63cm)", condition: "A- (보풀 약간)", desc: "도톰한 울 혼방 케이블 짜임 가디건. 우드 단추가 달린 카멜 컬러로 어떤 하의와도 잘 어울려요." },
-  { id: 3, name: "하이웨스트 워싱 데님 팬츠", category: "하의", price: 45000, stock: 10, img: "img/product-3.svg", size: "27 (허리 34cm · 총장 98cm)", condition: "A (자연 워싱)", desc: "허리선이 높아 다리가 길어 보이는 스트레이트 핏 데님. 자연스러운 워싱이 빈티지 무드를 더해요." },
-  { id: 4, name: "체크 플리츠 미디 스커트", category: "하의", price: 38000, stock: 9, img: "img/product-4.svg", size: "S (허리 33cm · 총장 72cm)", condition: "A (사용감 적음)", desc: "브릭 레드 체크의 주름 미디 스커트. 니트, 블라우스와 함께 클래식하게 연출해 보세요." },
-  { id: 5, name: "브라운 레더 페니 로퍼", category: "신발", price: 68000, stock: 6, img: "img/product-5.svg", size: "235mm (굽 2.5cm)", condition: "B+ (밑창 교체 완료)", desc: "천연 가죽 페니 로퍼. 밑창을 새로 갈아 편하게 신을 수 있고, 양말과 함께 신으면 더 멋스러워요." },
-  { id: 6, name: "스웨이드 앵클 부츠", category: "신발", price: 79000, stock: 5, img: "img/product-6.svg", size: "240mm (굽 3cm)", condition: "A- (앞코 미세 사용감)", desc: "부드러운 카멜 스웨이드 앵클 부츠. 원피스와 데님 어디에나 어울리는 가을·겨울 필수템이에요." },
-  { id: 7, name: "플로럴 프린트 티어드 원피스", category: "원피스", price: 58000, stock: 7, img: "img/product-7.svg", size: "FREE (가슴단면 46cm · 총장 118cm)", condition: "A (사용감 적음)", desc: "작은 꽃무늬가 흩뿌려진 3단 티어드 원피스. 가디건을 걸치면 계절 내내 입을 수 있어요." },
-  { id: 8, name: "코듀로이 버튼 원피스", category: "원피스", price: 62000, stock: 4, img: "img/product-8.svg", size: "M (가슴단면 44cm · 총장 112cm)", condition: "A (사용감 적음)", desc: "골이 고운 브라운 코듀로이 멜빵 원피스. 블라우스나 터틀넥과 레이어드하기 좋아요." }
-];
+// ---------- 상품 (shop_products 표) ----------
+// 읽어 올 열 이름 (표와 똑같이)
+const PRODUCT_COLUMNS = "id, name, category, price, stock, image_url, is_active, created_at";
+// image_url 이 비었거나 그림을 못 불러올 때 보여 줄 기본 그림
+const DEFAULT_IMG = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500">' +
+  '<rect width="400" height="500" fill="#f3ece2"/>' +
+  '<path d="M150 170l50-30 50 30 40 30-25 40-25-15v125H160V225l-25 15-25-40z" fill="none" stroke="#d9c8b0" stroke-width="10" stroke-linejoin="round"/>' +
+  '<text x="200" y="430" font-family="sans-serif" font-size="26" fill="#8a7d70" text-anchor="middle">NO IMAGE</text></svg>'
+);
 
 // ---------- 회원 등급 ----------
 // code: DB(shop_profiles.grade)에 저장된 값 / name: 쇼핑몰 화면에 보여 줄 이름
@@ -39,15 +38,14 @@ const SLIDE_INTERVAL = 6000;      // 슬라이드 교차 간격 (6초)
 const NO_DB = "데이터베이스에 연결하지 못했어요. 잠시 후 새로 고침해 주세요.";
 
 /* =========================================================
-   브라우저 저장소 — 장바구니 · 재고 · 주문만 (회원 정보는 저장하지 않음)
+   브라우저 저장소 — 장바구니 · 주문만 (회원 정보 · 재고는 저장하지 않음)
    ========================================================= */
 const KEY = {
-  cart: "aa_cart",
-  orders: "aa_orders",
-  stock: "aa_stock"
+  cart: "aa_cart_v2",   // [{ id: shop_products.id, qty }]
+  orders: "aa_orders"
 };
-// 예전 버전이 남긴 회원 목록·비밀번호·로그인 기록을 지우기 위한 이름
-const OLD_MEMBER_KEYS = ["aa_users", "aa_session"];
+// 예전 버전이 남긴 이름들 (회원 목록·비밀번호·로그인 기록, 배열 id 로 담긴 장바구니, 화면에서 줄이던 재고)
+const OLD_KEYS = ["aa_users", "aa_session", "aa_cart", "aa_stock"];
 
 const store = {
   get(key, fallback) {
@@ -131,22 +129,71 @@ const ICON = {
 };
 
 /* =========================================================
-   상품 · 재고
+   상품 (shop_products 에서 읽기만 · 넣고 고치는 일은 관리자만)
    ========================================================= */
-function getProduct(id) {
-  return PRODUCTS.find((p) => p.id === Number(id));
+function stockOf(p) {
+  return Math.max(0, Number(p.stock) || 0);
 }
-// 판매된 수량을 반영한 남은 재고
-function getStock(id) {
-  const sold = store.get(KEY.stock, {});
-  const product = getProduct(id);
-  if (!product) return 0;
-  return Math.max(0, product.stock - (sold[id] || 0));
+function imgSrc(p) {
+  const url = p && typeof p.image_url === "string" ? p.image_url.trim() : "";
+  return url || DEFAULT_IMG;
 }
-function reduceStock(id, qty) {
-  const sold = store.get(KEY.stock, {});
-  sold[id] = (sold[id] || 0) + qty;
-  store.set(KEY.stock, sold);
+// 경로가 틀려서 그림을 못 불러오면 기본 그림으로
+function imgFallback(el) {
+  el.onerror = null;
+  el.src = DEFAULT_IMG;
+}
+function imgTag(p, lazy) {
+  return `<img src="${esc(imgSrc(p))}" alt="${esc(p.name)}"${lazy ? ' loading="lazy"' : ""} onerror="imgFallback(this)">`;
+}
+// 검색어의 % _ \ 를 글자 그대로 찾도록
+function escapeLike(word) {
+  return word.replace(/[\\%_]/g, (m) => "\\" + m);
+}
+
+// 목록: 판매 중(is_active)인 상품, 분류 · 검색어 · 정렬 반영
+async function fetchProducts({ category, keyword, sort }) {
+  if (!db) return { data: null, error: { message: NO_DB } };
+  let query = db
+    .from(TABLE.products)
+    .select(PRODUCT_COLUMNS)
+    .eq("is_active", true);
+
+  if (category && category !== "전체") query = query.eq("category", category);
+
+  const word = (keyword || "").trim();
+  if (word) query = query.ilike("name", `%${escapeLike(word)}%`);   // 대소문자 구분 없이
+
+  if (sort === "low") query = query.order("price", { ascending: true });
+  else if (sort === "high") query = query.order("price", { ascending: false });
+  else if (sort === "name") query = query.order("name", { ascending: true });
+  query = query.order("id", { ascending: true });                  // 기본: id 순
+
+  return await query;
+}
+
+// 상세: id 로 한 건만
+async function fetchProduct(id) {
+  if (!db) return { data: null, error: { message: NO_DB } };
+  const num = Number(id);
+  if (!Number.isInteger(num)) return { data: null, error: null };
+  return await db
+    .from(TABLE.products)
+    .select(PRODUCT_COLUMNS)
+    .eq("id", num)
+    .eq("is_active", true)
+    .maybeSingle();
+}
+
+// 장바구니용: 여러 id 를 한 번에
+async function fetchProductsByIds(ids) {
+  if (!ids.length) return { data: [], error: null };
+  if (!db) return { data: null, error: { message: NO_DB } };
+  return await db
+    .from(TABLE.products)
+    .select(PRODUCT_COLUMNS)
+    .in("id", ids)
+    .eq("is_active", true);
 }
 
 /* =========================================================
@@ -259,11 +306,10 @@ async function logout() {
 }
 
 /* =========================================================
-   장바구니
+   장바구니 (브라우저에 id · 수량만 저장)
    ========================================================= */
 function getCart() {
-  // 없어진 상품은 걸러내기
-  return store.get(KEY.cart, []).filter((item) => getProduct(item.id));
+  return store.get(KEY.cart, []).filter((item) => item && item.id != null && item.qty > 0);
 }
 function saveCart(cart) {
   store.set(KEY.cart, cart);
@@ -272,45 +318,39 @@ function saveCart(cart) {
 function cartCount() {
   return getCart().reduce((sum, item) => sum + item.qty, 0);
 }
-function addToCart(id, qty) {
-  const stock = getStock(id);
+// 장바구니 + 표의 상품 정보 합치기 (판매가 끝난 상품은 빼기)
+async function loadCartItems() {
+  const cart = getCart();
+  const { data, error } = await fetchProductsByIds(cart.map((item) => item.id));
+  if (error) return { items: null, removed: false, error };
+  const map = new Map(data.map((p) => [p.id, p]));
+  const items = cart
+    .filter((item) => map.has(item.id))
+    .map((item) => ({ product: map.get(item.id), qty: item.qty }));
+  const removed = items.length !== cart.length;
+  if (removed) saveCart(items.map((i) => ({ id: i.product.id, qty: i.qty })));
+  return { items, removed, error: null };
+}
+function addToCart(product, qty) {
+  const stock = stockOf(product);
   if (stock <= 0) {
     showToast("품절된 상품이에요.");
     return false;
   }
   const cart = getCart();
-  const found = cart.find((item) => item.id === id);
+  const found = cart.find((item) => item.id === product.id);
   const already = found ? found.qty : 0;
   if (already + qty > stock) {
     showToast(`재고가 ${stock}개 남아 있어요. (장바구니에 ${already}개)`);
     return false;
   }
   if (found) found.qty += qty;
-  else cart.push({ id, qty });
+  else cart.push({ id: product.id, qty });
   saveCart(cart);
   return true;
 }
-function changeCartQty(id, diff) {
-  const cart = getCart();
-  const item = cart.find((i) => i.id === id);
-  if (!item) return;
-  const next = item.qty + diff;
-  if (next < 1) return;
-  if (next > getStock(id)) {
-    showToast(`재고가 ${getStock(id)}개 남아 있어요.`);
-    return;
-  }
-  item.qty = next;
-  saveCart(cart);
-  renderCart();
-}
-function removeFromCart(id) {
-  saveCart(getCart().filter((i) => i.id !== id));
-  renderCart();
-  showToast("장바구니에서 삭제했어요.");
-}
-function calcCart(cart) {
-  const subtotal = cart.reduce((sum, item) => sum + getProduct(item.id).price * item.qty, 0);
+function calcCart(items) {
+  const subtotal = items.reduce((sum, i) => sum + Number(i.product.price) * i.qty, 0);
   const shipping = subtotal === 0 || subtotal >= FREE_SHIPPING ? 0 : SHIPPING_FEE;
   return { subtotal, shipping, total: subtotal + shipping };
 }
@@ -384,47 +424,51 @@ function renderChips() {
   });
 }
 
-function filteredProducts() {
-  const word = state.keyword.trim().toLowerCase();
-  let list = PRODUCTS.filter((p) => {
-    const okCat = state.category === "전체" || p.category === state.category;
-    const okWord = !word || p.name.toLowerCase().includes(word) || p.category.includes(word);
-    return okCat && okWord;
-  });
-  if (state.sort === "low") list = list.slice().sort((a, b) => a.price - b.price);
-  if (state.sort === "high") list = list.slice().sort((a, b) => b.price - a.price);
-  if (state.sort === "name") list = list.slice().sort((a, b) => a.name.localeCompare(b.name, "ko"));
-  return list;
-}
-
-function renderProducts() {
+// 목록 그리기 — 늦게 도착한 예전 응답은 무시해요
+let listSeq = 0;
+async function renderProducts() {
   renderChips();
-  const list = filteredProducts();
+  const seq = ++listSeq;
   const word = state.keyword.trim();
+  const filtered = Boolean(word) || state.category !== "전체";
   $("#shopSubtitle").textContent = state.category === "전체" ? "전체 상품" : state.category;
+  $("#resultInfo").textContent = "불러오는 중…";
+  $("#productGrid").innerHTML = `<div class="empty"><p>불러오는 중…</p></div>`;
+
+  const { data, error } = await fetchProducts(state);
+  if (seq !== listSeq) return;
+
+  if (error) {
+    console.error(error.message);
+    $("#resultInfo").textContent = "";
+    $("#productGrid").innerHTML = `<div class="empty"><p>상품을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</p></div>`;
+    return;
+  }
+
+  const list = data || [];
   $("#resultInfo").innerHTML = word
     ? `‘${esc(word)}’ 검색 결과 ${list.length}개 <button type="button" class="btn-text" id="clearSearch">검색어 지우기</button>`
     : `상품 ${list.length}개`;
 
   if (list.length === 0) {
-    $("#productGrid").innerHTML = `<div class="empty"><p>조건에 맞는 상품이 없어요.</p><button type="button" class="btn" id="resetFilter">전체 상품 보기</button></div>`;
+    $("#productGrid").innerHTML = `<div class="empty"><p>상품이 없습니다.</p>${filtered ? `<button type="button" class="btn" id="resetFilter">전체 상품 보기</button>` : ""}</div>`;
     return;
   }
 
   $("#productGrid").innerHTML = list.map((p) => {
-    const stock = getStock(p.id);
+    const stock = stockOf(p);
     let badge = "";
-    if (stock === 0) badge = `<span class="badge soldout">SOLD OUT</span>`;
+    if (stock === 0) badge = `<span class="badge soldout">품절</span>`;
     else if (stock <= 3) badge = `<span class="badge">${stock}개 남음</span>`;
     return `
       <article class="product-card">
         <a href="#product/${p.id}">
           <div class="product-thumb">
-            <img src="${p.img}" alt="${esc(p.name)}" loading="lazy">
+            ${imgTag(p, true)}
             ${badge}
           </div>
           <div class="product-info">
-            <span class="product-cat">${p.category}</span>
+            <span class="product-cat">${esc(p.category)}</span>
             <h3 class="product-name">${esc(p.name)}</h3>
             <p class="product-price">${won(p.price)}</p>
           </div>
@@ -441,16 +485,28 @@ function resetFilters() {
 }
 
 /* =========================================================
-   화면: 상품 상세
+   화면: 상품 상세 (id 로 한 건)
    ========================================================= */
-function renderDetail(id) {
-  const p = getProduct(id);
+let detailSeq = 0;
+async function renderDetail(id) {
   const box = $("#productDetail");
-  if (!p) {
-    box.innerHTML = `<div class="empty"><p>상품을 찾을 수 없어요.</p><a href="#shop" class="btn">목록으로</a></div>`;
+  const seq = ++detailSeq;
+  box.innerHTML = `<a href="#shop" class="back-link">← 목록으로</a><div class="empty"><p>불러오는 중…</p></div>`;
+
+  const { data: p, error } = await fetchProduct(id);
+  if (seq !== detailSeq) return;
+
+  if (error) {
+    console.error(error.message);
+    box.innerHTML = `<div class="empty"><p>상품을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</p><a href="#shop" class="btn">목록으로</a></div>`;
     return;
   }
-  const stock = getStock(p.id);
+  if (!p) {
+    box.innerHTML = `<div class="empty"><p>상품이 없습니다.</p><a href="#shop" class="btn">목록으로</a></div>`;
+    return;
+  }
+
+  const stock = stockOf(p);
   const grade = myGrade();
   const rate = grade.rate;
   state.detailQty = 1;
@@ -458,16 +514,14 @@ function renderDetail(id) {
   box.innerHTML = `
     <a href="#shop" class="back-link">← 목록으로</a>
     <div class="detail">
-      <div class="detail-img"><img src="${p.img}" alt="${esc(p.name)}"></div>
+      <div class="detail-img">${imgTag(p, false)}</div>
       <div class="detail-info">
-        <span class="product-cat">${p.category}</span>
+        <span class="product-cat">${esc(p.category)}</span>
         <h2>${esc(p.name)}</h2>
         <p class="detail-price">${won(p.price)}</p>
         <p class="detail-point">${auth.user ? `${grade.name} 등급` : `${GRADES[0].name} 등급 기준`} · ${Math.round(rate * 100)}% 적립 예정 (${pt(Math.floor(p.price * rate))})</p>
-        <p class="detail-desc">${esc(p.desc)}</p>
         <table class="spec">
-          <tr><th>사이즈</th><td>${esc(p.size)}</td></tr>
-          <tr><th>상태</th><td>${esc(p.condition)}</td></tr>
+          <tr><th>분류</th><td>${esc(p.category)}</td></tr>
           <tr><th>재고</th><td>${stock > 0 ? `${stock}개` : "품절"}</td></tr>
           <tr><th>배송</th><td>${won(FREE_SHIPPING)} 이상 무료 · 기본 ${won(SHIPPING_FEE)}</td></tr>
         </table>
@@ -480,7 +534,7 @@ function renderDetail(id) {
           <span class="detail-total" id="dTotal">${won(p.price)}</span>
         </div>
         <div class="detail-actions">
-          <button type="button" class="btn" id="dCart" ${stock === 0 ? "disabled" : ""}>장바구니 담기</button>
+          <button type="button" class="btn" id="dCart" ${stock === 0 ? "disabled" : ""}>${stock === 0 ? "품절" : "장바구니 담기"}</button>
           <button type="button" class="btn btn-dark" id="dBuy" ${stock === 0 ? "disabled" : ""}>${stock === 0 ? "품절" : "바로 구매"}</button>
         </div>
       </div>
@@ -495,12 +549,12 @@ function renderDetail(id) {
   $("#dMinus").addEventListener("click", () => { if (state.detailQty > 1) { state.detailQty--; updateQty(); } });
   $("#dPlus").addEventListener("click", () => { if (state.detailQty < stock) { state.detailQty++; updateQty(); } });
   $("#dCart").addEventListener("click", () => {
-    if (addToCart(p.id, state.detailQty)) showToast("장바구니에 담았어요.");
+    if (addToCart(p, state.detailQty)) showToast("장바구니에 담았어요.");
   });
   $("#dBuy").addEventListener("click", () => {
     const inCart = getCart().find((i) => i.id === p.id);
     // 이미 담겨 있으면 그대로 주문으로, 아니면 담고 이동
-    if (inCart || addToCart(p.id, state.detailQty)) location.hash = "#checkout";
+    if (inCart || addToCart(p, state.detailQty)) location.hash = "#checkout";
   });
   updateQty();
 }
@@ -508,36 +562,55 @@ function renderDetail(id) {
 /* =========================================================
    화면: 장바구니
    ========================================================= */
-function renderCart() {
-  const cart = getCart();
+let cartCache = [];   // 지금 화면에 그린 [{ product, qty }]
+
+async function renderCart() {
   const area = $("#cartArea");
-  if (cart.length === 0) {
+  if (getCart().length === 0) {
+    cartCache = [];
+    drawCart();
+    return;
+  }
+  area.innerHTML = `<div class="empty"><p>불러오는 중…</p></div>`;
+  const { items, removed, error } = await loadCartItems();
+  if (error) {
+    console.error(error.message);
+    area.innerHTML = `<div class="empty"><p>장바구니 상품을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</p></div>`;
+    return;
+  }
+  if (removed) showToast("판매가 끝난 상품을 장바구니에서 뺐어요.");
+  cartCache = items;
+  drawCart();
+}
+
+function drawCart() {
+  const area = $("#cartArea");
+  if (cartCache.length === 0) {
     area.innerHTML = `<div class="empty"><p>장바구니가 비어 있어요.</p><a href="#shop" class="btn btn-dark" data-cat="전체">쇼핑하러 가기</a></div>`;
     return;
   }
-  const { subtotal, shipping, total } = calcCart(cart);
+  const { subtotal, shipping, total } = calcCart(cartCache);
   const left = FREE_SHIPPING - subtotal;
 
   area.innerHTML = `
     <div class="cart-layout">
       <ul class="cart-list">
-        ${cart.map((item) => {
-          const p = getProduct(item.id);
-          const stock = getStock(p.id);
+        ${cartCache.map(({ product: p, qty }) => {
+          const stock = stockOf(p);
           return `
           <li class="cart-item">
-            <a href="#product/${p.id}"><img src="${p.img}" alt="${esc(p.name)}"></a>
+            <a href="#product/${p.id}">${imgTag(p, false)}</a>
             <div>
               <p class="cart-item-name"><a href="#product/${p.id}">${esc(p.name)}</a></p>
-              <p class="cart-item-meta">${p.category} · ${won(p.price)} · 재고 ${stock}개</p>
+              <p class="cart-item-meta">${esc(p.category)} · ${won(p.price)} · ${stock > 0 ? `재고 ${stock}개` : "품절"}</p>
               <div class="qty">
-                <button type="button" data-act="minus" data-id="${p.id}" aria-label="${esc(p.name)} 수량 빼기" ${item.qty <= 1 ? "disabled" : ""}>−</button>
-                <span>${item.qty}</span>
-                <button type="button" data-act="plus" data-id="${p.id}" aria-label="${esc(p.name)} 수량 더하기" ${item.qty >= stock ? "disabled" : ""}>+</button>
+                <button type="button" data-act="minus" data-id="${p.id}" aria-label="${esc(p.name)} 수량 빼기" ${qty <= 1 ? "disabled" : ""}>−</button>
+                <span>${qty}</span>
+                <button type="button" data-act="plus" data-id="${p.id}" aria-label="${esc(p.name)} 수량 더하기" ${qty >= stock ? "disabled" : ""}>+</button>
               </div>
             </div>
             <div class="cart-item-side">
-              <span class="cart-item-sum">${won(p.price * item.qty)}</span>
+              <span class="cart-item-sum">${won(p.price * qty)}</span>
               <button type="button" class="btn-text" data-act="remove" data-id="${p.id}">삭제</button>
             </div>
           </li>`;
@@ -554,27 +627,59 @@ function renderCart() {
     </div>`;
 }
 
+function changeCartQty(id, diff) {
+  const entry = cartCache.find((i) => i.product.id === id);
+  if (!entry) return;
+  const next = entry.qty + diff;
+  if (next < 1) return;
+  const stock = stockOf(entry.product);
+  if (next > stock) {
+    showToast(`재고가 ${stock}개 남아 있어요.`);
+    return;
+  }
+  entry.qty = next;
+  const cart = getCart();
+  const item = cart.find((i) => i.id === id);
+  if (item) item.qty = next;
+  saveCart(cart);
+  drawCart();
+}
+function removeFromCart(id) {
+  saveCart(getCart().filter((i) => i.id !== id));
+  cartCache = cartCache.filter((i) => i.product.id !== id);
+  drawCart();
+  showToast("장바구니에서 삭제했어요.");
+}
+
 /* =========================================================
    화면: 체험 결제
    ※ points 는 DB 가 막아 두어 화면에서 바꿀 수 없어요.
      포인트 사용·적립 반영은 주문 기능을 DB 로 옮길 때 연결합니다.
+   ※ 재고(stock)도 화면에서 줄이지 않아요.
    ========================================================= */
-function renderCheckout() {
+async function renderCheckout() {
   const area = $("#checkoutArea");
-  const cart = getCart();
 
   if (!auth.user) {
     area.innerHTML = `<div class="empty"><p>주문하려면 로그인이 필요해요.</p><a href="#login" class="btn btn-dark">로그인</a> <a href="#signup" class="btn">회원가입</a></div>`;
     sessionStorage.setItem("aa_after_login", "#checkout");
     return;
   }
-  if (cart.length === 0) {
-    area.innerHTML = `<div class="empty"><p>주문할 상품이 없어요.</p><a href="#shop" class="btn btn-dark" data-cat="전체">쇼핑하러 가기</a></div>`;
+  const emptyHtml = `<div class="empty"><p>주문할 상품이 없어요.</p><a href="#shop" class="btn btn-dark" data-cat="전체">쇼핑하러 가기</a></div>`;
+  if (getCart().length === 0) { area.innerHTML = emptyHtml; return; }
+
+  area.innerHTML = `<div class="empty"><p>불러오는 중…</p></div>`;
+  const { items, removed, error } = await loadCartItems();
+  if (error) {
+    console.error(error.message);
+    area.innerHTML = `<div class="empty"><p>주문 상품을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</p></div>`;
     return;
   }
+  if (removed) showToast("판매가 끝난 상품을 장바구니에서 뺐어요.");
+  if (items.length === 0) { area.innerHTML = emptyHtml; return; }
 
   const profile = auth.profile || {};
-  const { subtotal, shipping } = calcCart(cart);
+  const { subtotal, shipping } = calcCart(items);
   const grade = myGrade();
   const points = profile.points || 0;
   const earn = Math.floor(subtotal * grade.rate);
@@ -613,10 +718,9 @@ function renderCheckout() {
       <aside class="card">
         <h3>주문 상품</h3>
         <ul class="checkout-items">
-          ${cart.map((item) => {
-            const p = getProduct(item.id);
-            return `<li><span>${esc(p.name)} × ${item.qty}</span><span>${won(p.price * item.qty)}</span></li>`;
-          }).join("")}
+          ${items.map(({ product: p, qty }) =>
+            `<li><span>${esc(p.name)} × ${qty}</span><span>${won(p.price * qty)}</span></li>`
+          ).join("")}
         </ul>
         <div class="summary-row"><span>상품 금액</span><span>${won(subtotal)}</span></div>
         <div class="summary-row"><span>배송비</span><span>${shipping ? won(shipping) : "무료"}</span></div>
@@ -631,11 +735,11 @@ function renderCheckout() {
 
   $("#checkoutForm").addEventListener("submit", (e) => {
     e.preventDefault();
-    placeOrder();
+    placeOrder(e.target);
   });
 }
 
-function placeOrder() {
+async function placeOrder(form) {
   const msg = $("#coMsg");
   const name = $("#coName").value.trim();
   const phone = $("#coPhone").value.trim();
@@ -646,16 +750,20 @@ function placeOrder() {
   if (!$("#coAgree").checked) { msg.textContent = "주문 내용 확인에 체크해 주세요."; return; }
   if (!auth.user) { location.hash = "#login"; return; }
 
-  const cart = getCart();
-  // 주문 직전에 재고 다시 확인
-  for (const item of cart) {
-    if (item.qty > getStock(item.id)) {
-      msg.textContent = `‘${getProduct(item.id).name}’ 재고가 부족해요. 장바구니를 확인해 주세요.`;
+  // 주문 직전에 표에서 가격 · 재고 다시 확인
+  setBusy(form, true);
+  const { items, error } = await loadCartItems();
+  setBusy(form, false);
+  if (error) { msg.textContent = "상품 정보를 확인하지 못했어요. 잠시 후 다시 시도해 주세요."; return; }
+  if (items.length === 0) { msg.textContent = "주문할 상품이 없어요. 장바구니를 확인해 주세요."; return; }
+  for (const { product, qty } of items) {
+    if (qty > stockOf(product)) {
+      msg.textContent = `‘${product.name}’ 재고가 부족해요. 장바구니를 확인해 주세요.`;
       return;
     }
   }
 
-  const { subtotal, shipping } = calcCart(cart);
+  const { subtotal, shipping } = calcCart(items);
   const grade = myGrade();
   const now = new Date();
 
@@ -663,10 +771,7 @@ function placeOrder() {
   const order = {
     orderId: "AA" + now.getTime().toString().slice(-9),
     email: auth.user.email,
-    items: cart.map((item) => {
-      const p = getProduct(item.id);
-      return { id: p.id, name: p.name, price: p.price, qty: item.qty };
-    }),
+    items: items.map(({ product: p, qty }) => ({ id: p.id, name: p.name, price: p.price, qty })),
     subtotal,
     shipping,
     usedPoints: 0,
@@ -683,7 +788,6 @@ function placeOrder() {
   const orders = store.get(KEY.orders, []);
   orders.unshift(order);
   store.set(KEY.orders, orders);
-  cart.forEach((item) => reduceStock(item.id, item.qty));
 
   saveCart([]);
   location.hash = "#complete/" + order.orderId;
@@ -1025,11 +1129,12 @@ function bindEvents() {
    시작
    ========================================================= */
 document.addEventListener("DOMContentLoaded", async () => {
-  OLD_MEMBER_KEYS.forEach((key) => store.remove(key));   // 예전 회원 정보 지우기
+  OLD_KEYS.forEach((key) => store.remove(key));   // 예전 회원 정보 · 장바구니 · 재고 기록 지우기
   renderHeader();
   initHero();
   bindEvents();
-  renderProducts();          // 상품은 로그인 확인을 기다리지 않고 먼저 보여 줘요
+  $("#resultInfo").textContent = "불러오는 중…";
+  $("#productGrid").innerHTML = `<div class="empty"><p>불러오는 중…</p></div>`;
 
   try {
     await loadAuth();        // db.auth.getSession 으로 로그인 상태 확인
